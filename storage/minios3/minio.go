@@ -2,6 +2,7 @@ package minios3
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/url"
 	"time"
@@ -19,7 +20,7 @@ type S3 struct {
 }
 
 func MustNew(cfg *Config, tracer trace.Tracer) S3 {
-	minioClient, err := minio.New(cfg.Host, &minio.Options{
+	minioClient, err := minio.New(fmt.Sprintf("%s:%d", cfg.Host, cfg.Port), &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
 		Secure: cfg.Ssl,
 	})
