@@ -8,6 +8,7 @@ import (
 
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/trace"
@@ -23,7 +24,10 @@ type Database interface {
 	BeginSerializable(ctx context.Context) (context.Context, error)
 	Query(ctx context.Context, dest any, query string, args ...any) error
 	QuerySlice(ctx context.Context, dest any, query string, args ...any) error
-	Exec(ctx context.Context, query string, args ...any) error
+	Exec(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error)
+	QueryTx(ctx context.Context, dest any, query string, args ...any) error
+	QuerySliceTx(ctx context.Context, dest any, query string, args ...any) error
+	ExecTx(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error)
 }
 
 type Postgres struct {
@@ -102,15 +106,14 @@ func (pg Postgres) QuerySlice(ctx context.Context, dest any, query string, args 
 	return pgxscan.Select(ctx, pg.pool, dest, query, args...)
 }
 
-func (pg Postgres) Exec(ctx context.Context, query string, args ...any) error {
+func (pg Postgres) Exec(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error) {
 	ctx, span := pg.tracer.Start(ctx, "Postgres.Exec")
 	defer span.End()
-	_, err := pg.pool.Exec(ctx, query, args...)
-	return err
+	return pg.pool.Exec(ctx, query, args...)
 }
 
 func (pg Postgres) QueryTx(ctx context.Context, dest any, query string, args ...any) error {
-	ctx, span := pg.tracer.Start(ctx, "Postgres.Query")
+	ctx, span := pg.tracer.Start(ctx, "Postgres.QueryTx")
 	defer span.End()
 
 	tx := ctx.Value(txKey).(pgx.Tx)
@@ -118,18 +121,17 @@ func (pg Postgres) QueryTx(ctx context.Context, dest any, query string, args ...
 }
 
 func (pg Postgres) QuerySliceTx(ctx context.Context, dest any, query string, args ...any) error {
-	ctx, span := pg.tracer.Start(ctx, "Postgres.QuerySlice")
+	ctx, span := pg.tracer.Start(ctx, "Postgres.QuerySliceTx")
 	defer span.End()
 
 	tx := ctx.Value(txKey).(pgx.Tx)
 	return pgxscan.Select(ctx, tx, dest, query, args...)
 }
 
-func (pg Postgres) ExecTx(ctx context.Context, query string, args ...any) error {
-	ctx, span := pg.tracer.Start(ctx, "Postgres.Exec")
+func (pg Postgres) ExecTx(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error) {
+	ctx, span := pg.tracer.Start(ctx, "Postgres.ExecTx")
 	defer span.End()
 
 	tx := ctx.Value(txKey).(pgx.Tx)
-	_, err := tx.Exec(ctx, query, args...)
-	return err
+	return tx.Exec(ctx, query, args...)
 }
