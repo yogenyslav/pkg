@@ -1,3 +1,5 @@
+//go:generate mockgen -source=./postgres.go -destination=./mock/postgres.go -package=mock
+
 package postgres
 
 import (
