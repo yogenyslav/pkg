@@ -1,3 +1,4 @@
+// Package prom provides a configurable Prometheus server.
 package prom
 
 import (
@@ -8,9 +9,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func HandlePrometheus(host string, port int) {
+// HandlePrometheus starts a Prometheus server with the given configuration.
+func HandlePrometheus(cfg *Config) {
 	http.Handle("/metrics", promhttp.Handler())
-	if err := http.ListenAndServe(fmt.Sprintf("%s:%d", host, port), nil); err != nil {
-		log.Fatal().Err(err).Msg("listening prometheus failed")
+	if err := http.ListenAndServe(fmt.Sprintf("%s:%d", cfg.Host, cfg.Port), nil); err != nil { //nolint:gosec // no security issue here
+		log.Error().Err(err).Msg("listening prometheus failed")
 	}
 }

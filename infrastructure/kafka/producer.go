@@ -1,18 +1,19 @@
 package kafka
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/IBM/sarama"
 	"github.com/rs/zerolog/log"
 )
 
+// AsyncProducer is a Kafka async producer.
 type AsyncProducer struct {
-	brokers  []Broker
+	Config   *Config
 	producer sarama.AsyncProducer
 }
 
+// MustNewAsyncProducer creates a new Kafka async producer or panics if failed.
 func MustNewAsyncProducer(config *Config, partitioner sarama.PartitionerConstructor, acks sarama.RequiredAcks) *AsyncProducer {
 	cfg := sarama.NewConfig()
 
@@ -29,27 +30,29 @@ func MustNewAsyncProducer(config *Config, partitioner sarama.PartitionerConstruc
 
 	asyncProducer, err := sarama.NewAsyncProducer(brokers, cfg)
 	if err != nil {
-		log.Panic().Err(err)
+		log.Panic().Err(err).Msg("kafka.NewAsyncProducer")
 	}
 
 	go func() {
 		for e := range asyncProducer.Errors() {
-			log.Err(e).Msg("kafka.AsyncProducer")
+			log.Error().Err(e).Msg("kafka.AsyncProducer")
 		}
 	}()
 
 	return &AsyncProducer{
-		brokers:  config.Brokers,
+		Config:   config,
 		producer: asyncProducer,
 	}
 }
 
-func (k *AsyncProducer) SendAsyncMessage(ctx context.Context, message *sarama.ProducerMessage) {
+// SendAsyncMessage sends a message to Kafka.
+func (k *AsyncProducer) SendAsyncMessage(message *sarama.ProducerMessage) {
 	k.producer.Input() <- message
 }
 
+// Close closes the Kafka async producer.
 func (k *AsyncProducer) Close() {
 	if err := k.producer.Close(); err != nil {
-		log.Err(err).Msg("kafka.AsyncProducer.Close")
+		log.Error().Err(err).Msg("kafka.AsyncProducer.Close")
 	}
 }

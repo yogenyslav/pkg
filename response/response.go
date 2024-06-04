@@ -1,26 +1,28 @@
+// Package response provides a way to handle errors and return them as JSON responses via fiber framework.
 package response
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/zerolog/log"
+	"github.com/yogenyslav/pkg"
 )
 
+// ErrorResponse is a struct that holds the error message and status code.
 type ErrorResponse struct {
 	Msg    string `json:"msg"`
 	Status int    `json:"-"`
 }
 
+// ErrorHandler is a struct that holds the error status map.
 type ErrorHandler struct {
 	status map[error]ErrorResponse
 }
 
+// NewErrorHandler creates a new ErrorHandler instance with the given error status map.
 func NewErrorHandler(errStatus map[error]ErrorResponse) ErrorHandler {
 	status := map[error]ErrorResponse{
 		pgx.ErrNoRows: {
@@ -42,10 +44,12 @@ func NewErrorHandler(errStatus map[error]ErrorResponse) ErrorHandler {
 	}
 }
 
+// Handler is a method that handles the error and returns a JSON response.
+// Should be used as a fiber.Config.ErrorHandler.
 func (h ErrorHandler) Handler(ctx *fiber.Ctx, err error) error {
 	e := h.getErrorResponse(err)
 	log.Error().Err(err).Msg(e.Msg)
-	return ctx.Status(e.Status).JSON(e)
+	return ctx.Status(e.Status).JSON(e) //nolint:wrapcheck // no need to wrap
 }
 
 func (h ErrorHandler) getErrorResponse(err error) ErrorResponse {
@@ -54,21 +58,21 @@ func (h ErrorHandler) getErrorResponse(err error) ErrorResponse {
 		e  ErrorResponse
 	)
 
-	if CheckPageNotFound(err) {
+	if pkg.CheckPageNotFound(err) {
 		return ErrorResponse{
 			Msg:    "page not found",
 			Status: http.StatusNotFound,
 		}
 	}
 
-	if CheckDuplicateKey(err) {
+	if pkg.CheckDuplicateKey(err) {
 		return ErrorResponse{
 			Msg:    "duplicate key",
 			Status: http.StatusBadRequest,
 		}
 	}
 
-	if CheckValidationError(err) {
+	if pkg.CheckValidationError(err) {
 		return ErrorResponse{
 			Msg:    err.Error(),
 			Status: http.StatusUnprocessableEntity,
@@ -89,19 +93,4 @@ func (h ErrorHandler) getErrorResponse(err error) ErrorResponse {
 	}
 
 	return e
-}
-
-func CheckDuplicateKey(err error) bool {
-	var pgError *pgconn.PgError
-	return errors.As(err, &pgError) && pgError.Code == "23505"
-}
-
-func CheckPageNotFound(err error) bool {
-	var fiberError *fiber.Error
-	return errors.As(err, &fiberError) && fiberError.Code == http.StatusNotFound
-}
-
-func CheckValidationError(err error) bool {
-	var validationErrors validator.ValidationErrors
-	return errors.As(err, &validationErrors)
 }

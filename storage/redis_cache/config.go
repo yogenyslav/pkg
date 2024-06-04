@@ -1,9 +1,10 @@
 package rediscache
 
+// Config is the configuration for the Redis cache.
 type Config struct {
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
-	Db       int    `yaml:"db"`
+	DB       int    `yaml:"db"`
 }
