@@ -14,6 +14,10 @@ import (
 type SQLDatabase interface {
 	// BeginSerializable starts a new transaction with serializable isolation level.
 	BeginSerializable(ctx context.Context) (context.Context, error)
+	// CommitTx commits the transaction.
+	CommitTx(ctx context.Context) error
+	// RollbackTx rolls back the transaction.
+	RollbackTx(ctx context.Context) error
 	// Query executes a query that returns a single row.
 	Query(ctx context.Context, dest any, query string, args ...any) error
 	// QuerySlice executes a query that returns multiple rows.

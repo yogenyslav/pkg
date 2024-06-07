@@ -81,6 +81,32 @@ func (pg Postgres) BeginSerializable(ctx context.Context) (context.Context, erro
 	return ctx, nil
 }
 
+// CommitTx commits the transaction.
+func (pg Postgres) CommitTx(ctx context.Context) error {
+	ctx, span := pg.tracer.Start(ctx, "Postgres.CommitTx")
+	defer span.End()
+
+	tx, ok := ctx.Value(txKey).(pgx.Tx)
+	if !ok {
+		return errors.New("transaction not found in context")
+	}
+
+	return errors.Wrap(tx.Commit(ctx), "failed to commit transaction")
+}
+
+// RollbackTx rolls back the transaction.
+func (pg Postgres) RollbackTx(ctx context.Context) error {
+	ctx, span := pg.tracer.Start(ctx, "Postgres.RollbackTx")
+	defer span.End()
+
+	tx, ok := ctx.Value(txKey).(pgx.Tx)
+	if !ok {
+		return errors.New("transaction not found in context")
+	}
+
+	return errors.Wrap(tx.Rollback(ctx), "failed to rollback transaction")
+}
+
 // Query executes a query that returns a single row.
 func (pg Postgres) Query(ctx context.Context, dest any, query string, args ...any) error {
 	ctx, span := pg.tracer.Start(ctx, "Postgres.Query")
