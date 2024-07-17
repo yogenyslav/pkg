@@ -10,6 +10,15 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+var (
+	// ErrDuplicateKey is an error for postgres unique key violation.
+	ErrDuplicateKey = errors.New("duplicate key")
+	// ErrPageNotFound for page not found handlers.
+	ErrPageNotFound = errors.New("page not found")
+	// ErrValidation for handling validation errors.
+	ErrValidation = errors.New("validation error")
+)
+
 // CheckDuplicateKey checks if the error is a postgres duplicate key violation.
 func CheckDuplicateKey(err error) bool {
 	var pgError *pgconn.PgError

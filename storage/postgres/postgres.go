@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -109,21 +110,33 @@ func (pg Postgres) RollbackTx(ctx context.Context) error {
 
 // Query executes a query that returns a single row.
 func (pg Postgres) Query(ctx context.Context, dest any, query string, args ...any) error {
-	ctx, span := pg.tracer.Start(ctx, "Postgres.Query")
+	ctx, span := pg.tracer.Start(
+		ctx,
+		"Postgres.Query",
+		trace.WithAttributes(attribute.String("query", query)),
+	)
 	defer span.End()
 	return errors.Wrap(pgxscan.Get(ctx, pg.pool, dest, query, args...), "failed to get row")
 }
 
 // QuerySlice executes a query that returns multiple rows.
 func (pg Postgres) QuerySlice(ctx context.Context, dest any, query string, args ...any) error {
-	ctx, span := pg.tracer.Start(ctx, "Postgres.QuerySlice")
+	ctx, span := pg.tracer.Start(
+		ctx,
+		"Postgres.QuerySlice",
+		trace.WithAttributes(attribute.String("query", query)),
+	)
 	defer span.End()
 	return errors.Wrap(pgxscan.Select(ctx, pg.pool, dest, query, args...), "failed to get rows")
 }
 
 // Exec executes a query that doesn't return any rows.
 func (pg Postgres) Exec(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error) {
-	ctx, span := pg.tracer.Start(ctx, "Postgres.Exec")
+	ctx, span := pg.tracer.Start(
+		ctx,
+		"Postgres.Exec",
+		trace.WithAttributes(attribute.String("query", query)),
+	)
 	defer span.End()
 
 	tag, err := pg.pool.Exec(ctx, query, args...)
@@ -131,13 +144,17 @@ func (pg Postgres) Exec(ctx context.Context, query string, args ...any) (pgconn.
 }
 
 // QueryTx executes a query that returns a single row in a transaction.
-func (pg Postgres) QueryTx(ctx context.Context, dest any, query string, args ...any) error { //nolint:dupl // because of pgx api
-	ctx, span := pg.tracer.Start(ctx, "Postgres.QueryTx")
+func (pg Postgres) QueryTx(ctx context.Context, dest any, query string, args ...any) error {
+	ctx, span := pg.tracer.Start(
+		ctx,
+		"Postgres.QueryTx",
+		trace.WithAttributes(attribute.String("query", query)),
+	)
 	defer span.End()
 
-	tx, ok := ctx.Value(txKey).(pgx.Tx)
-	if !ok {
-		return errors.New("transaction not found in context")
+	tx, err := getTxFromCtx(ctx)
+	if err != nil {
+		return err
 	}
 
 	return errors.Wrap(pgxscan.Get(ctx, tx, dest, query, args...), "failed to get row in transaction")
@@ -145,25 +162,43 @@ func (pg Postgres) QueryTx(ctx context.Context, dest any, query string, args ...
 
 // QuerySliceTx executes a query that returns multiple rows in a transaction.
 func (pg Postgres) QuerySliceTx(ctx context.Context, dest any, query string, args ...any) error { //nolint:dupl // because of pgx api
-	ctx, span := pg.tracer.Start(ctx, "Postgres.QuerySliceTx")
+	ctx, span := pg.tracer.Start(
+		ctx,
+		"Postgres.QuerySliceTx",
+		trace.WithAttributes(attribute.String("query", query)),
+	)
 	defer span.End()
 
-	tx, ok := ctx.Value(txKey).(pgx.Tx)
-	if !ok {
-		return errors.New("transaction not found in context")
+	tx, err := getTxFromCtx(ctx)
+	if err != nil {
+		return err
 	}
+
 	return errors.Wrap(pgxscan.Select(ctx, tx, dest, query, args...), "failed to get rows in transaction")
 }
 
 // ExecTx executes a query that doesn't return any rows in a transaction.
 func (pg Postgres) ExecTx(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error) {
-	ctx, span := pg.tracer.Start(ctx, "Postgres.ExecTx")
+	ctx, span := pg.tracer.Start(
+		ctx,
+		"Postgres.ExecTx",
+		trace.WithAttributes(attribute.String("query", query)),
+	)
 	defer span.End()
 
-	tx, ok := ctx.Value(txKey).(pgx.Tx)
-	if !ok {
-		return pgconn.CommandTag{}, errors.New("transaction not found in context")
+	tx, err := getTxFromCtx(ctx)
+	if err != nil {
+		return pgconn.CommandTag{}, err
 	}
+
 	tag, err := tx.Exec(ctx, query, args...)
 	return tag, errors.Wrap(err, "failed to exec in transaction")
+}
+
+func getTxFromCtx(ctx context.Context) (pgx.Tx, error) {
+	tx, ok := ctx.Value(txKey).(pgx.Tx)
+	if !ok {
+		return nil, errors.New("transaction not found in context")
+	}
+	return tx, nil
 }
