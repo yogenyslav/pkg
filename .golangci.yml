@@ -56,9 +56,6 @@ linters-settings:
       - experimental
       - opinionated
 
-  dupl:
-    threshold: 70
-
   dogsled:
     max-blank-identifiers: 2
 
@@ -79,7 +76,6 @@ linters:
   enable:
     - bodyclose
     - dogsled
-    - dupl
     - decorder
     - errcheck
     - forbidigo
