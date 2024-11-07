@@ -1,10 +1,18 @@
 package kafka
 
 import (
-	"fmt"
+	"errors"
+	"net"
+	"strconv"
 
 	"github.com/IBM/sarama"
-	"github.com/rs/zerolog/log"
+)
+
+var (
+	// ErrAsyncProducer is an error when Kafka async producer wasn't opened.
+	ErrAsyncProducer = errors.New("creating new async Kafka producer failed")
+	// ErrCloseProducer is an error when async producer wasn't closed properly.
+	ErrCloseProducer = errors.New("can't close async producer properly")
 )
 
 // AsyncProducer is a Kafka async producer.
@@ -13,8 +21,8 @@ type AsyncProducer struct {
 	producer sarama.AsyncProducer
 }
 
-// MustNewAsyncProducer creates a new Kafka async producer or panics if failed.
-func MustNewAsyncProducer(config *Config, partitioner sarama.PartitionerConstructor, acks sarama.RequiredAcks) *AsyncProducer {
+// NewAsyncProducer creates a new Kafka async producer or panics if failed.
+func NewAsyncProducer(config *Config, partitioner sarama.PartitionerConstructor, acks sarama.RequiredAcks) (*AsyncProducer, chan error, error) {
 	cfg := sarama.NewConfig()
 
 	cfg.Producer.Partitioner = partitioner
@@ -25,24 +33,25 @@ func MustNewAsyncProducer(config *Config, partitioner sarama.PartitionerConstruc
 
 	brokers := make([]string, len(config.Brokers))
 	for idx, broker := range config.Brokers {
-		brokers[idx] = fmt.Sprintf("%s:%d", broker.Host, broker.Port)
+		brokers[idx] = net.JoinHostPort(broker.Host, strconv.Itoa(broker.Port))
 	}
 
 	asyncProducer, err := sarama.NewAsyncProducer(brokers, cfg)
 	if err != nil {
-		log.Panic().Err(err).Msg("kafka.NewAsyncProducer")
+		return nil, nil, errors.Join(ErrAsyncProducer, err)
 	}
 
+	errCh := make(chan error)
 	go func() {
 		for e := range asyncProducer.Errors() {
-			log.Error().Err(e).Msg("kafka.AsyncProducer")
+			errCh <- e
 		}
 	}()
 
 	return &AsyncProducer{
 		Config:   config,
 		producer: asyncProducer,
-	}
+	}, errCh, nil
 }
 
 // SendAsyncMessage sends a message to Kafka.
@@ -51,8 +60,9 @@ func (k *AsyncProducer) SendAsyncMessage(message *sarama.ProducerMessage) {
 }
 
 // Close closes the Kafka async producer.
-func (k *AsyncProducer) Close() {
+func (k *AsyncProducer) Close() error {
 	if err := k.producer.Close(); err != nil {
-		log.Error().Err(err).Msg("kafka.AsyncProducer.Close")
+		return errors.Join(ErrCloseProducer, err)
 	}
+	return nil
 }

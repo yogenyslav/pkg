@@ -4,18 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/rs/zerolog/log"
 )
 
 var (
+	// ErrNewConsumer is an error when new Kafka consumer can't be created.
+	ErrNewConsumer = errors.New("creating new consumer failed")
 	// ErrGetPartitions is returned when failed to get partitions.
 	ErrGetPartitions = errors.New("failed to get partitions")
-
 	// ErrConsumePartition is returned when failed to consume partition.
 	ErrConsumePartition = errors.New("error consuming partition")
+	// ErrClosePartitionConsumer is an error when a partition consumer wasn't properly closed.
+	ErrClosePartitionConsumer = errors.New("partition consumer wasn't properly closed")
 )
 
 // Consumer is a Kafka consumer.
@@ -24,10 +28,10 @@ type Consumer struct {
 	SingleConsumer sarama.Consumer
 }
 
-// MustNewConsumer creates a new Kafka consumer or panics if failed.
+// NewConsumer creates a new Kafka consumer or panics if failed.
 // config is the Kafka configuration.
 // commitInterval is the interval for the consumer to commit the offset.
-func MustNewConsumer(config *Config, commitInterval time.Duration) *Consumer {
+func NewConsumer(config *Config, commitInterval time.Duration) (*Consumer, error) {
 	cfg := sarama.NewConfig()
 	cfg.Consumer.Return.Errors = false
 	cfg.Consumer.Offsets.AutoCommit.Enable = true
@@ -41,26 +45,29 @@ func MustNewConsumer(config *Config, commitInterval time.Duration) *Consumer {
 
 	brokers := make([]string, len(config.Brokers))
 	for idx, broker := range config.Brokers {
-		brokers[idx] = fmt.Sprintf("%s:%d", broker.Host, broker.Port)
+		brokers[idx] = net.JoinHostPort(broker.Host, strconv.Itoa(broker.Port))
 	}
 
 	consumer, err := sarama.NewConsumer(brokers, cfg)
 	if err != nil {
-		log.Panic().Err(err).Msg("failed to create new consumer")
+		return nil, errors.Join(ErrNewConsumer, err)
 	}
 
 	return &Consumer{
 		Config:         config,
 		SingleConsumer: consumer,
-	}
+	}, nil
 }
 
 // Subscribe subscribes to a Kafka topic and sends messages to the out channel in a separate goroutine.
-func (consumer *Consumer) Subscribe(ctx context.Context, topic string, out chan<- *sarama.ConsumerMessage) error {
+func (consumer *Consumer) Subscribe(ctx context.Context, topic string) (
+	out chan *sarama.ConsumerMessage,
+	errCh chan error,
+	e error,
+) {
 	partitions, err := consumer.SingleConsumer.Partitions(topic)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to get partitions")
-		return ErrGetPartitions
+		return nil, nil, errors.Join(ErrGetPartitions, err)
 	}
 
 	initialOffset := sarama.OffsetOldest
@@ -68,37 +75,33 @@ func (consumer *Consumer) Subscribe(ctx context.Context, topic string, out chan<
 		initialOffset = sarama.OffsetNewest
 	}
 
+	out = make(chan *sarama.ConsumerMessage)
+	errCh = make(chan error)
+
 	for _, partition := range partitions {
 		pc, err := consumer.SingleConsumer.ConsumePartition(topic, partition, initialOffset)
 		if err != nil {
-			log.Error().Err(err).Int32("partition", partition).Msg("error consuming partition")
-			return ErrConsumePartition
+			close(out)
+			close(errCh)
+
+			return nil, nil, fmt.Errorf("partition: %d, %w", partition, errors.Join(ErrConsumePartition, err))
 		}
 
-		go consume(ctx, pc, partition, out)
+		go consume(ctx, pc, out, errCh)
 	}
-	return nil
+	return out, errCh, nil
 }
 
-func consume(ctx context.Context, pc sarama.PartitionConsumer, partition int32, out chan<- *sarama.ConsumerMessage) {
-	log.Info().Int32("partition", partition).Msg("consumer started")
+func consume(ctx context.Context, pc sarama.PartitionConsumer, out chan<- *sarama.ConsumerMessage, err chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
-			if err := pc.Close(); err != nil {
-				log.Error().Err(err).Int32("partition", partition).Msg("failed to close consumer")
-				return
+			if e := pc.Close(); e != nil {
+				err <- errors.Join(ErrClosePartitionConsumer, e)
 			}
-			log.Info().Int32("partition", partition).Msg("consumer closed")
 			return
 		case message := <-pc.Messages():
 			out <- message
-			log.Info().
-				Str("topic", message.Topic).
-				Int32("partition", message.Partition).
-				Str("key", string(message.Key)).
-				Int64("offset", message.Offset).
-				Msg("kafka message claimed")
 		}
 	}
 }

@@ -2,13 +2,14 @@
 package response
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
-	"github.com/rs/zerolog/log"
-	"github.com/yogenyslav/pkg"
+	"github.com/rs/zerolog"
+	"github.com/yogenyslav/pkg/errs"
 )
 
 // ErrorResponse is a struct that holds the error message and status code.
@@ -46,10 +47,12 @@ func NewErrorHandler(errStatus map[error]ErrorResponse) ErrorHandler {
 
 // Handler is a method that handles the error and returns a JSON response.
 // Should be used as a fiber.Config.ErrorHandler.
-func (h ErrorHandler) Handler(ctx *fiber.Ctx, err error) error {
-	e := h.getErrorResponse(err)
-	log.Error().Err(err).Msg(e.Msg)
-	return ctx.Status(e.Status).JSON(e) //nolint:wrapcheck // no need to wrap
+func (h ErrorHandler) Handler(logger *zerolog.Logger) fiber.ErrorHandler {
+	return func(ctx *fiber.Ctx, err error) error {
+		e := h.getErrorResponse(err)
+		logger.Err(err).Msg(e.Msg)
+		return ctx.Status(e.Status).JSON(e) //nolint:wrapcheck // no need to wrap
+	}
 }
 
 func (h ErrorHandler) getErrorResponse(err error) ErrorResponse {
@@ -58,31 +61,38 @@ func (h ErrorHandler) getErrorResponse(err error) ErrorResponse {
 		e  ErrorResponse
 	)
 
-	if pkg.CheckPageNotFound(err) {
+	if errs.CheckPageNotFound(err) {
 		return ErrorResponse{
 			Msg:    "page not found",
 			Status: http.StatusNotFound,
 		}
 	}
 
-	if pkg.CheckDuplicateKey(err) {
+	if errs.CheckDuplicateKey(err) {
 		return ErrorResponse{
 			Msg:    "duplicate key",
 			Status: http.StatusBadRequest,
 		}
 	}
 
-	if pkg.CheckValidationError(err) {
+	if errs.CheckValidationError(err) {
 		return ErrorResponse{
 			Msg:    err.Error(),
 			Status: http.StatusUnprocessableEntity,
 		}
 	}
 
-	e, ok = h.status[err]
+	for k, v := range h.status {
+		if errors.Is(err, k) {
+			ok = true
+			e = v
+			break
+		}
+	}
+
 	if !ok {
 		e = ErrorResponse{
-			Msg:    err.Error(),
+			Msg:    "unknown error",
 			Status: http.StatusInternalServerError,
 		}
 	}

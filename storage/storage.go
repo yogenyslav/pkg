@@ -5,7 +5,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -13,7 +12,7 @@ import (
 // SQLDatabase is an interface that wraps the basic SQL operations.
 type SQLDatabase interface {
 	// BeginSerializable starts a new transaction with serializable isolation level.
-	BeginSerializable(ctx context.Context) (context.Context, error)
+	BeginSerializable(ctx context.Context) error
 	// CommitTx commits the transaction.
 	CommitTx(ctx context.Context) error
 	// RollbackTx rolls back the transaction.
@@ -23,13 +22,15 @@ type SQLDatabase interface {
 	// QuerySlice executes a query that returns multiple rows.
 	QuerySlice(ctx context.Context, dest any, query string, args ...any) error
 	// Exec executes a query that doesn't return any rows.
-	Exec(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error)
+	// Returns number of affected rows.
+	Exec(ctx context.Context, query string, args ...any) (int64, error)
 	// QueryTx executes a query that returns a single row in a transaction.
 	QueryTx(ctx context.Context, dest any, query string, args ...any) error
 	// QuerySliceTx executes a query that returns multiple rows in a transaction.
 	QuerySliceTx(ctx context.Context, dest any, query string, args ...any) error
 	// ExecTx executes a query that doesn't return any rows in a transaction.
-	ExecTx(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error)
+	// Returns number of affected rows.
+	ExecTx(ctx context.Context, query string, args ...any) (int64, error)
 	// Close closes the database connection.
 	Close()
 }
@@ -49,7 +50,7 @@ type MongoDatabase interface {
 	// DeleteOne deletes a single document from the collection.
 	DeleteOne(ctx context.Context, coll string, filter interface{}, opts ...*options.DeleteOptions) (*mongo.DeleteResult, error)
 	// Close closes the MongoDB client.
-	Close()
+	Close() error
 }
 
 // Cache is an interface that wraps the basic cache operations.

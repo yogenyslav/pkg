@@ -2,15 +2,24 @@
 package grpcclient
 
 import (
-	"fmt"
+	"errors"
+	"net"
+	"strconv"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+var (
+	// ErrCreateClient is an error when failed to establish a connection from grpc client to server.
+	ErrCreateClient = errors.New("can't establish a grpc connection")
+	// ErrCloseConn is an errors when a grpc connection wasn't be properly closed.
+	ErrCloseConn = errors.New("closing grpc connection failed")
+)
+
 // GrpcClient holds available methods of grpc client.
 type GrpcClient interface {
-	GetConn() *grpc.ClientConn
+	Conn() *grpc.ClientConn
 	Close() error
 }
 
@@ -23,10 +32,10 @@ type grpcClient struct {
 func NewGrpcClient(cfg *Config, opts ...grpc.DialOption) (GrpcClient, error) {
 	var grpcOpts []grpc.DialOption
 	grpcOpts = append(grpcOpts, opts...)
-	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 	conn, err := grpc.NewClient(addr, grpcOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create grpc client: %w", err)
+		return nil, errors.Join(ErrCreateClient, err)
 	}
 
 	return &grpcClient{conn: conn}, nil
@@ -39,10 +48,13 @@ func NewGrpcClientWithInsecure(cfg *Config) (GrpcClient, error) {
 
 // Close grpc.ClientConn.
 func (c *grpcClient) Close() error {
-	return fmt.Errorf("error closing conn: %w", c.conn.Close())
+	if err := c.conn.Close(); err != nil {
+		return errors.Join(ErrCloseConn, err)
+	}
+	return nil
 }
 
-// GetConn returns grpc.ClientConn.
-func (c *grpcClient) GetConn() *grpc.ClientConn {
+// Conn GetConn returns grpc.ClientConn.
+func (c *grpcClient) Conn() *grpc.ClientConn {
 	return c.conn
 }

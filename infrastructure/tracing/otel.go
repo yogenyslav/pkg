@@ -3,8 +3,8 @@ package tracing
 
 import (
 	"context"
+	"errors"
 
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -12,25 +12,39 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 )
 
-// MustSetupOTel setups OpenTelemetry tracing with the given configuration.
-func MustSetupOTel(cfg *Config, name string) {
-	exporter := MustNewExporter(context.Background(), cfg.URL())
+var (
+	// ErrNewExporter is an error when a new OTLP exporter can't be created.
+	ErrNewExporter = errors.New("failed to create new otlp exporter")
+	// ErrNewProvider is an error when a new trace provider can't be created.
+	ErrNewProvider = errors.New("new trace provider can't be created")
+)
 
-	provider := MustNewTraceProvider(exporter, name)
+// SetupOTel setups OpenTelemetry tracing with the given configuration.
+func SetupOTel(cfg *Config, name string) error {
+	exporter, err := NewExporter(context.Background(), cfg.URL())
+	if err != nil {
+		return err
+	}
+
+	provider, err := NewTraceProvider(exporter, name)
+	if err != nil {
+		return err
+	}
 	otel.SetTracerProvider(provider)
+	return nil
 }
 
-// MustNewExporter creates a new OTLP trace exporter or panics if failed.
-func MustNewExporter(ctx context.Context, endpoint string) sdktrace.SpanExporter {
+// NewExporter creates a new OTLP trace exporter.
+func NewExporter(ctx context.Context, endpoint string) (sdktrace.SpanExporter, error) {
 	exporter, err := otlptracehttp.New(ctx, otlptracehttp.WithInsecure(), otlptracehttp.WithEndpoint(endpoint))
 	if err != nil {
-		log.Panic().Err(err).Msg("failed to create OTLP trace exporter")
+		return nil, errors.Join(ErrNewExporter, err)
 	}
-	return exporter
+	return exporter, nil
 }
 
-// MustNewTraceProvider creates a new OTel trace provider or panics if failed.
-func MustNewTraceProvider(exp sdktrace.SpanExporter, name string) *sdktrace.TracerProvider {
+// NewTraceProvider creates a new OTel trace provider.
+func NewTraceProvider(exp sdktrace.SpanExporter, name string) (*sdktrace.TracerProvider, error) {
 	r, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
@@ -39,11 +53,11 @@ func MustNewTraceProvider(exp sdktrace.SpanExporter, name string) *sdktrace.Trac
 		),
 	)
 	if err != nil {
-		log.Panic().Err(err).Msg("failed to create tracing resource")
+		return nil, errors.Join(ErrNewProvider, err)
 	}
 
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
 		sdktrace.WithResource(r),
-	)
+	), nil
 }

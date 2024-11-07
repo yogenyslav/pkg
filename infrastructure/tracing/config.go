@@ -1,7 +1,8 @@
 package tracing
 
 import (
-	"fmt"
+	"net"
+	"strconv"
 )
 
 // Config is the struct for tracing configuration.
@@ -12,5 +13,5 @@ type Config struct {
 
 // URL returns the URL for the tracing server.
 func (c *Config) URL() string {
-	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+	return net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
 }
