@@ -5,6 +5,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -12,7 +13,9 @@ import (
 // SQLDatabase is an interface that wraps the basic SQL operations.
 type SQLDatabase interface {
 	// BeginSerializable starts a new transaction with serializable isolation level.
-	BeginSerializable(ctx context.Context) error
+	BeginSerializable(ctx context.Context) (context.Context, error)
+	// GetTx returns a transaction from ctx or an error if there is no tx.
+	GetTx(ctx context.Context) (pgx.Tx, error)
 	// CommitTx commits the transaction.
 	CommitTx(ctx context.Context) error
 	// RollbackTx rolls back the transaction.
