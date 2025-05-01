@@ -6,10 +6,11 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -17,51 +18,80 @@ var (
 	ErrCipherTooShort = errors.New("cipher too short, must use 32-bit")
 )
 
-// Encrypt string with a given key.
-func Encrypt(toEncrypt, keyString string) (string, error) {
-	key, err := hex.DecodeString(keyString)
+// HashPassword hashes a raw password string with bcrypt.
+func HashPassword(password string) (string, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return "", fmt.Errorf("encryption key: %w", err)
+		return "", fmt.Errorf("bcrypt: %w", err)
 	}
-	plain := []byte(toEncrypt)
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", fmt.Errorf("failed to initialize AES cipher: %w", err)
-	}
-
-	ciphertext := make([]byte, aes.BlockSize+len(plain))
-	iv := ciphertext[:aes.BlockSize]
-	if _, err = io.ReadFull(rand.Reader, iv); err != nil {
-		return "", fmt.Errorf("failed to generate iv: %w", err)
-	}
-
-	stream := cipher.NewCFBEncrypter(block, iv)
-	stream.XORKeyStream(ciphertext[aes.BlockSize:], plain)
-	return base64.URLEncoding.EncodeToString(ciphertext), nil
+	return string(hashedPassword), nil
 }
 
-// Decrypt a string with a given key.
-func Decrypt(toDecrypt, keyString string) (string, error) {
-	key, err := hex.DecodeString(keyString)
-	if err != nil {
-		return "", fmt.Errorf("decryption key: %w", err)
-	}
-	cipherText, err := base64.URLEncoding.DecodeString(toDecrypt)
-	if err != nil {
-		return "", fmt.Errorf("ciphered text: %w", err)
-	}
+// VerifyPassword compares raw password from request with the hashed version.
+func VerifyPassword(hashedPassword, password string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)) == nil
+}
+
+// Encrypt encrypts a raw string using the provided key and returns the encrypted version.
+func Encrypt(plainText, keyRaw string) (string, error) {
+	key := []byte(keyRaw)
+
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", fmt.Errorf("cipher block: %w", err)
-	}
-	if len(cipherText) < aes.BlockSize {
-		return "", ErrCipherTooShort
+		return "", fmt.Errorf("failed to create cipher: %w", err)
 	}
 
-	iv := cipherText[:aes.BlockSize]
-	cipherText = cipherText[aes.BlockSize:]
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCM: %w", err)
+	}
 
-	stream := cipher.NewCFBDecrypter(block, iv)
-	stream.XORKeyStream(cipherText, cipherText)
-	return string(cipherText), nil
+	// generate a random nonce
+	nonce := make([]byte, aesGCM.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", fmt.Errorf("failed to generate nonce: %w", err)
+	}
+
+	// encrypt and authenticate the plaintext
+	// the nonce is prepended to the ciphertext
+	ciphertext := aesGCM.Seal(nonce, nonce, []byte(plainText), nil)
+
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// Decrypt decrypts a string that was encrypted using Encrypt.
+func Decrypt(encryptedText, keyRaw string) (string, error) {
+	key := []byte(keyRaw)
+
+	ciphertext, err := base64.StdEncoding.DecodeString(encryptedText)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode ciphertext: %w", err)
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	nonceSize := aesGCM.NonceSize()
+
+	// ensure the ciphertext is large enough to contain a nonce
+	if len(ciphertext) < nonceSize {
+		return "", fmt.Errorf("key for nonce: %w", ErrCipherTooShort)
+	}
+
+	// extract nonce from the beginning of the ciphertext
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt: %w", err)
+	}
+
+	return string(plaintext), nil
 }
