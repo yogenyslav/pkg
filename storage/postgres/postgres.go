@@ -9,51 +9,55 @@ import (
 
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
+type contextKey uint8
+
+const (
+	// TxKey is a key for the transaction stored in context.
+	TxKey contextKey = iota
+)
+
 var (
 	// ErrCreatePostgres is an error when a connection to postgres can't be established.
 	ErrCreatePostgres = errors.New("failed to connect to postgres")
+	// ErrNoTxFound is an error when no transaction was found, but tried to access it.
+	ErrNoTxFound = errors.New("no transaction found")
 )
 
 // Postgres wraps pgxpool.Pool and adds tracer to all operations.
 type Postgres struct {
 	pool   *pgxpool.Pool
 	tracer trace.Tracer
-	tx     pgx.Tx
 }
 
 // New creates a new Postgres instance.
 func New(cfg *Config, tracer trace.Tracer) (Postgres, error) {
-	var (
-		err         error
-		pool        *pgxpool.Pool
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(cfg.RetryTimeout)*time.Second)
-		ticker      = time.NewTicker(time.Second)
-	)
-	defer cancel()
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return Postgres{}, errors.Join(ErrCreatePostgres, err)
-		case <-ticker.C:
-			pool, err = pgxpool.New(ctx, cfg.URL())
-			if err != nil {
-				continue
-			}
-
-			if err = pool.Ping(ctx); err != nil {
-				continue
-			}
-
-			return Postgres{pool: pool, tracer: tracer}, nil
-		}
+	pgConfig, err := pgxpool.ParseConfig(cfg.URL())
+	if err != nil {
+		return Postgres{}, fmt.Errorf("parse postgres connection string: %w", err)
 	}
+
+	// set few connection options
+	pgConfig.ConnConfig.ConnectTimeout = time.Second * time.Duration(cfg.RetryTimeout)
+	pgConfig.ConnConfig.ValidateConnect = func(ctx context.Context, conn *pgconn.PgConn) error {
+		return conn.Ping(ctx)
+	}
+
+	// create pgx pool for postgres
+	pool, err := pgxpool.NewWithConfig(context.Background(), pgConfig)
+	if err != nil {
+		return Postgres{}, fmt.Errorf("connect to postgres: %w", err)
+	}
+
+	return Postgres{
+		pool:   pool,
+		tracer: tracer,
+	}, nil
 }
 
 // GetPool returns the underlying pgxpool.Pool.
@@ -66,8 +70,17 @@ func (pg Postgres) Close() {
 	pg.pool.Close()
 }
 
+// GetTx returns a transaction from ctx or an error if there is no tx.
+func (pg Postgres) GetTx(ctx context.Context) (pgx.Tx, error) {
+	tx, ok := ctx.Value(TxKey).(pgx.Tx)
+	if !ok {
+		return nil, fmt.Errorf("get transaction: %w", ErrNoTxFound)
+	}
+	return tx, nil
+}
+
 // BeginSerializable starts a new transaction with serializable isolation level.
-func (pg Postgres) BeginSerializable(ctx context.Context) error {
+func (pg Postgres) BeginSerializable(ctx context.Context) (context.Context, error) {
 	if pg.tracer != nil {
 		var span trace.Span
 		ctx, span = pg.tracer.Start(ctx, "Postgres.BeginSerializable")
@@ -79,11 +92,10 @@ func (pg Postgres) BeginSerializable(ctx context.Context) error {
 		AccessMode: pgx.ReadWrite,
 	})
 	if err != nil {
-		return fmt.Errorf("starting a serializable tx failed: %w", err)
+		return ctx, fmt.Errorf("starting a serializable tx failed: %w", err)
 	}
 
-	pg.tx = tx
-	return nil
+	return context.WithValue(ctx, TxKey, tx), nil
 }
 
 // CommitTx commits the transaction.
@@ -94,7 +106,12 @@ func (pg Postgres) CommitTx(ctx context.Context) error {
 		defer span.End()
 	}
 
-	if err := pg.tx.Commit(ctx); err != nil {
+	tx, err := pg.GetTx(ctx)
+	if err != nil {
+		return fmt.Errorf("get transaction: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
@@ -108,8 +125,15 @@ func (pg Postgres) RollbackTx(ctx context.Context) error {
 		defer span.End()
 	}
 
-	if err := pg.tx.Rollback(ctx); err != nil {
-		return fmt.Errorf("failed to rollback transaction: %w", err)
+	tx, err := pg.GetTx(ctx)
+	if err != nil {
+		return fmt.Errorf("get transaction: %w", err)
+	}
+
+	if err := tx.Rollback(ctx); err != nil {
+		if !errors.Is(err, pgx.ErrTxClosed) {
+			return fmt.Errorf("failed to rollback transaction: %w", err)
+		}
 	}
 	return nil
 }
@@ -181,7 +205,12 @@ func (pg Postgres) QueryTx(ctx context.Context, dest any, query string, args ...
 		defer span.End()
 	}
 
-	if err := pgxscan.Get(ctx, pg.tx, dest, query, args...); err != nil {
+	tx, err := pg.GetTx(ctx)
+	if err != nil {
+		return fmt.Errorf("get transaction: %w", err)
+	}
+
+	if err := pgxscan.Get(ctx, tx, dest, query, args...); err != nil {
 		return fmt.Errorf("failed to get row in transaction: %w", err)
 	}
 	return nil
@@ -199,7 +228,12 @@ func (pg Postgres) QuerySliceTx(ctx context.Context, dest any, query string, arg
 		defer span.End()
 	}
 
-	if err := pgxscan.Select(ctx, pg.tx, dest, query, args...); err != nil {
+	tx, err := pg.GetTx(ctx)
+	if err != nil {
+		return fmt.Errorf("get transaction: %w", err)
+	}
+
+	if err := pgxscan.Select(ctx, tx, dest, query, args...); err != nil {
 		return fmt.Errorf("failed to get rows in transaction: %w", err)
 	}
 	return nil
@@ -217,7 +251,12 @@ func (pg Postgres) ExecTx(ctx context.Context, query string, args ...any) (int64
 		defer span.End()
 	}
 
-	tag, err := pg.tx.Exec(ctx, query, args...)
+	tx, err := pg.GetTx(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("get transaction: %w", err)
+	}
+
+	tag, err := tx.Exec(ctx, query, args...)
 	if err != nil {
 		return 0, fmt.Errorf("failed to exec in transaction: %w", err)
 	}

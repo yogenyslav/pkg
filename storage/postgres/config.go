@@ -15,13 +15,19 @@ type Config struct {
 	RetryTimeout int    `yaml:"retry_timeout"`
 }
 
-// URL returns the connection URL.
-func (c *Config) URL() string {
-	url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=", c.User, c.Password, c.Host, c.Port, c.DB)
-	if c.Ssl {
-		url += "enable"
-	} else {
-		url += "disable"
+// URL assembles config values into a conn string.
+func (cfg *Config) URL() string {
+	sslMode := "disable"
+	if cfg.Ssl {
+		sslMode = "enable"
 	}
-	return url
+	return fmt.Sprintf(
+		"postgresql://%s:%s@%s:%d/%s?sslmode=%s",
+		cfg.User,
+		cfg.Password,
+		cfg.Host,
+		cfg.Port,
+		cfg.DB,
+		sslMode,
+	)
 }
