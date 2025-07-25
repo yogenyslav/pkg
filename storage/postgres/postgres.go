@@ -111,7 +111,7 @@ func (pg Postgres) CommitTx(ctx context.Context) error {
 		return fmt.Errorf("get transaction: %w", err)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
+	if err = tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return nil
@@ -130,7 +130,7 @@ func (pg Postgres) RollbackTx(ctx context.Context) error {
 		return fmt.Errorf("get transaction: %w", err)
 	}
 
-	if err := tx.Rollback(ctx); err != nil {
+	if err = tx.Rollback(ctx); err != nil {
 		if !errors.Is(err, pgx.ErrTxClosed) {
 			return fmt.Errorf("failed to rollback transaction: %w", err)
 		}
@@ -210,14 +210,19 @@ func (pg Postgres) QueryTx(ctx context.Context, dest any, query string, args ...
 		return fmt.Errorf("get transaction: %w", err)
 	}
 
-	if err := pgxscan.Get(ctx, tx, dest, query, args...); err != nil {
+	if err = pgxscan.Get(ctx, tx, dest, query, args...); err != nil {
 		return fmt.Errorf("failed to get row in transaction: %w", err)
 	}
 	return nil
 }
 
 // QuerySliceTx executes a query that returns multiple rows in a transaction.
-func (pg Postgres) QuerySliceTx(ctx context.Context, dest any, query string, args ...any) error { //nolint:dupl // because of pgx api
+func (pg Postgres) QuerySliceTx(
+	ctx context.Context,
+	dest any,
+	query string,
+	args ...any,
+) error {
 	if pg.tracer != nil {
 		var span trace.Span
 		ctx, span = pg.tracer.Start(
@@ -233,7 +238,7 @@ func (pg Postgres) QuerySliceTx(ctx context.Context, dest any, query string, arg
 		return fmt.Errorf("get transaction: %w", err)
 	}
 
-	if err := pgxscan.Select(ctx, tx, dest, query, args...); err != nil {
+	if err = pgxscan.Select(ctx, tx, dest, query, args...); err != nil {
 		return fmt.Errorf("failed to get rows in transaction: %w", err)
 	}
 	return nil

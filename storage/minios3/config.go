@@ -7,7 +7,7 @@ type Config struct {
 	SecretKey string   `yaml:"secret_key"`
 	Buckets   []Bucket `yaml:"buckets"`
 	Ssl       bool     `yaml:"ssl"`
-	Port      int      `yaml:"port"`
+	Port      string   `yaml:"port"`
 }
 
 // Bucket is the configuration for a bucket.

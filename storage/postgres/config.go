@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"fmt"
+	"net"
 )
 
 // Config is the configuration for the PostgreSQL client.
@@ -11,7 +12,7 @@ type Config struct {
 	Host         string `yaml:"host"`
 	DB           string `yaml:"db"`
 	Ssl          bool   `yaml:"ssl"`
-	Port         int    `yaml:"port"`
+	Port         string `yaml:"port"`
 	RetryTimeout int    `yaml:"retry_timeout"`
 }
 
@@ -22,11 +23,10 @@ func (cfg *Config) URL() string {
 		sslMode = "enable"
 	}
 	return fmt.Sprintf(
-		"postgresql://%s:%s@%s:%d/%s?sslmode=%s",
+		"postgresql://%s:%s@%s/%s?sslmode=%s",
 		cfg.User,
 		cfg.Password,
-		cfg.Host,
-		cfg.Port,
+		net.JoinHostPort(cfg.Host, cfg.Port),
 		cfg.DB,
 		sslMode,
 	)

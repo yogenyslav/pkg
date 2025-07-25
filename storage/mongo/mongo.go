@@ -46,7 +46,12 @@ func (m Mongo) Close() error {
 }
 
 // InsertOne inserts a single document into the given collection.
-func (m Mongo) InsertOne(ctx context.Context, coll string, doc interface{}, opts ...*options.InsertOneOptions) (*mongo.InsertOneResult, error) {
+func (m Mongo) InsertOne(
+	ctx context.Context,
+	coll string,
+	doc interface{},
+	opts ...*options.InsertOneOptions,
+) (*mongo.InsertOneResult, error) {
 	if m.tracer != nil {
 		var span trace.Span
 		ctx, span = m.tracer.Start(ctx, "Mongo.InsertOne", trace.WithAttributes(
@@ -68,7 +73,12 @@ func (m Mongo) InsertOne(ctx context.Context, coll string, doc interface{}, opts
 }
 
 // FindOne finds a single document in the given collection.
-func (m Mongo) FindOne(ctx context.Context, coll string, filter, dest interface{}, opts ...*options.FindOneOptions) error {
+func (m Mongo) FindOne(
+	ctx context.Context,
+	coll string,
+	filter, dest interface{},
+	opts ...*options.FindOneOptions,
+) error {
 	if m.tracer != nil {
 		var span trace.Span
 		ctx, span = m.tracer.Start(ctx, "Mongo.FindOne", trace.WithAttributes(
@@ -84,7 +94,12 @@ func (m Mongo) FindOne(ctx context.Context, coll string, filter, dest interface{
 }
 
 // FindMany finds multiple documents in the given collection.
-func (m Mongo) FindMany(ctx context.Context, coll string, filter, dest interface{}, opts ...*options.FindOptions) error {
+func (m Mongo) FindMany(
+	ctx context.Context,
+	coll string,
+	filter, dest interface{},
+	opts ...*options.FindOptions,
+) error {
 	if m.tracer != nil {
 		var span trace.Span
 		ctx, span = m.tracer.Start(ctx, "Mongo.FindMany", trace.WithAttributes(
@@ -98,14 +113,19 @@ func (m Mongo) FindMany(ctx context.Context, coll string, filter, dest interface
 		return fmt.Errorf("failed to find many documents: %w", err)
 	}
 
-	if err := cursor.All(ctx, dest); err != nil {
+	if err = cursor.All(ctx, dest); err != nil {
 		return fmt.Errorf("failed to decode many documents: %w", err)
 	}
 	return nil
 }
 
 // UpdateOne updates a single document in the given collection.
-func (m Mongo) UpdateOne(ctx context.Context, coll string, filter, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) { //nolint:dupl // mongodb dictates the API
+func (m Mongo) UpdateOne(
+	ctx context.Context,
+	coll string,
+	filter, update interface{},
+	opts ...*options.UpdateOptions,
+) (*mongo.UpdateResult, error) {
 	if m.tracer != nil {
 		var span trace.Span
 		ctx, span = m.tracer.Start(ctx, "Mongo.UpdateOne", trace.WithAttributes(
@@ -122,7 +142,12 @@ func (m Mongo) UpdateOne(ctx context.Context, coll string, filter, update interf
 }
 
 // UpdateMany updates multiple documents in the given collection.
-func (m Mongo) UpdateMany(ctx context.Context, coll string, filter, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) { //nolint:dupl // mongodb dictates the API
+func (m Mongo) UpdateMany(
+	ctx context.Context,
+	coll string,
+	filter, update interface{},
+	opts ...*options.UpdateOptions,
+) (*mongo.UpdateResult, error) {
 	if m.tracer != nil {
 		var span trace.Span
 		ctx, span = m.tracer.Start(ctx, "Mongo.UpdateMany", trace.WithAttributes(
@@ -139,7 +164,12 @@ func (m Mongo) UpdateMany(ctx context.Context, coll string, filter, update inter
 }
 
 // DeleteOne deletes a single document from the given collection.
-func (m Mongo) DeleteOne(ctx context.Context, coll string, filter interface{}, opts ...*options.DeleteOptions) (*mongo.DeleteResult, error) {
+func (m Mongo) DeleteOne(
+	ctx context.Context,
+	coll string,
+	filter interface{},
+	opts ...*options.DeleteOptions,
+) (*mongo.DeleteResult, error) {
 	if m.tracer != nil {
 		var span trace.Span
 		ctx, span = m.tracer.Start(ctx, "Mongo.DeleteOne", trace.WithAttributes(

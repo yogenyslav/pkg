@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -17,10 +16,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var (
-	// ErrNewS3 is an error when failed to create new s3 client.
-	ErrNewS3 = errors.New("failed to create new s3 client")
-)
+// ErrNewS3 is an error when failed to create new s3 client.
+var ErrNewS3 = errors.New("failed to create new s3 client")
 
 // S3 provides a wrapper around the MinIO Go SDK.
 type S3 struct {
@@ -31,7 +28,7 @@ type S3 struct {
 
 // New creates a new S3 instance or panics if failed.
 func New(cfg *Config, tracer trace.Tracer, token string) (S3, error) {
-	minioClient, err := minio.New(net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)), &minio.Options{
+	minioClient, err := minio.New(net.JoinHostPort(cfg.Host, cfg.Port), &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, token),
 		Secure: cfg.Ssl,
 	})
@@ -178,7 +175,12 @@ func (s3 S3) GetObject(ctx context.Context, bucket, obj string, opts minio.GetOb
 }
 
 // PresignedGetObject returns a presigned URL for the object.
-func (s3 S3) PresignedGetObject(ctx context.Context, bucket, obj string, exp time.Duration, params url.Values) (*url.URL, error) {
+func (s3 S3) PresignedGetObject(
+	ctx context.Context,
+	bucket, obj string,
+	exp time.Duration,
+	params url.Values,
+) (*url.URL, error) {
 	if s3.tracer != nil {
 		var span trace.Span
 		ctx, span = s3.tracer.Start(ctx, "S3.PresignedGetObject", trace.WithAttributes(
@@ -202,7 +204,13 @@ func (s3 S3) PresignedGetObject(ctx context.Context, bucket, obj string, exp tim
 }
 
 // PutObject puts the object in the bucket.
-func (s3 S3) PutObject(ctx context.Context, bucket, obj string, reader io.Reader, size int64, opts minio.PutObjectOptions) (minio.UploadInfo, error) {
+func (s3 S3) PutObject(
+	ctx context.Context,
+	bucket, obj string,
+	reader io.Reader,
+	size int64,
+	opts minio.PutObjectOptions,
+) (minio.UploadInfo, error) {
 	if s3.tracer != nil {
 		var span trace.Span
 		ctx, span = s3.tracer.Start(ctx, "S3.PutObject", trace.WithAttributes(

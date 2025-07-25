@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -15,10 +14,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var (
-	// ErrNotFound reports that key doesn't exist.
-	ErrNotFound = errors.New("key not found")
-)
+// ErrNotFound reports that key doesn't exist.
+var ErrNotFound = errors.New("key not found")
 
 // Redis wraps go-redis client and adds tracer to all operations.
 type Redis struct {
@@ -29,7 +26,7 @@ type Redis struct {
 // New creates a new Redis instance.
 func New(cfg *Config, tracer trace.Tracer) (Redis, error) {
 	opts := redis.Options{
-		Addr:     net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+		Addr:     net.JoinHostPort(cfg.Host, cfg.Port),
 		Username: cfg.Username,
 		Password: cfg.Password,
 		DB:       cfg.DB,
@@ -60,7 +57,7 @@ func (r Redis) SetStruct(ctx context.Context, k string, v any, exp time.Duration
 		return fmt.Errorf("failed to marshal struct: %w", err)
 	}
 
-	if err := r.rc.Set(ctx, k, data, exp).Err(); err != nil {
+	if err = r.rc.Set(ctx, k, data, exp).Err(); err != nil {
 		return fmt.Errorf("failed to set struct: %w", err)
 	}
 	return nil
@@ -104,7 +101,7 @@ func (r Redis) GetStruct(ctx context.Context, dest any, k string) error {
 		return fmt.Errorf("failed to get struct: %w", err)
 	}
 
-	if err := json.Unmarshal(res, dest); err != nil {
+	if err = json.Unmarshal(res, dest); err != nil {
 		return fmt.Errorf("failed to unmarshal struct: %w", err)
 	}
 	return nil

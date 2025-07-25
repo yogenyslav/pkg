@@ -41,17 +41,39 @@ type SQLDatabase interface {
 // MongoDatabase is an interface that wraps the basic MongoDB operations.
 type MongoDatabase interface {
 	// InsertOne inserts a single document into the collection.
-	InsertOne(ctx context.Context, coll string, doc interface{}, opts ...*options.InsertOneOptions) (*mongo.InsertOneResult, error)
+	InsertOne(
+		ctx context.Context,
+		coll string,
+		doc interface{},
+		opts ...*options.InsertOneOptions,
+	) (*mongo.InsertOneResult, error)
 	// FindOne finds a single document in the collection.
 	FindOne(ctx context.Context, coll string, filter, dest interface{}, opts ...*options.FindOneOptions) error
 	// FindMany finds multiple documents in the collection.
 	FindMany(ctx context.Context, coll string, filter, dest interface{}, opts ...*options.FindOptions) error
 	// UpdateOne updates a single document in the collection.
-	UpdateOne(ctx context.Context, coll string, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error)
+	UpdateOne(
+		ctx context.Context,
+		coll string,
+		filter interface{},
+		update interface{},
+		opts ...*options.UpdateOptions,
+	) (*mongo.UpdateResult, error)
 	// UpdateMany updates multiple documents in the collection.
-	UpdateMany(ctx context.Context, coll string, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error)
+	UpdateMany(
+		ctx context.Context,
+		coll string,
+		filter interface{},
+		update interface{},
+		opts ...*options.UpdateOptions,
+	) (*mongo.UpdateResult, error)
 	// DeleteOne deletes a single document from the collection.
-	DeleteOne(ctx context.Context, coll string, filter interface{}, opts ...*options.DeleteOptions) (*mongo.DeleteResult, error)
+	DeleteOne(
+		ctx context.Context,
+		coll string,
+		filter interface{},
+		opts ...*options.DeleteOptions,
+	) (*mongo.DeleteResult, error)
 	// Close closes the MongoDB client.
 	Close() error
 }

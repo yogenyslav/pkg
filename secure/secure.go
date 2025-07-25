@@ -13,10 +13,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var (
-	// ErrCipherTooShort reports cipher key shorter than 32 bits.
-	ErrCipherTooShort = errors.New("cipher too short, must use 32-bit")
-)
+// ErrCipherTooShort reports cipher key shorter than 32 bits.
+var ErrCipherTooShort = errors.New("cipher too short, must use 32-bit")
 
 // HashPassword hashes a raw password string with bcrypt.
 func HashPassword(password string) (string, error) {
@@ -48,7 +46,7 @@ func Encrypt(plainText, keyRaw string) (string, error) {
 
 	// generate a random nonce
 	nonce := make([]byte, aesGCM.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", fmt.Errorf("failed to generate nonce: %w", err)
 	}
 

@@ -22,7 +22,11 @@ type AsyncProducer struct {
 }
 
 // NewAsyncProducer creates a new Kafka async producer or panics if failed.
-func NewAsyncProducer(config *Config, partitioner sarama.PartitionerConstructor, acks sarama.RequiredAcks) (*AsyncProducer, chan error, error) {
+func NewAsyncProducer(
+	config *Config,
+	partitioner sarama.PartitionerConstructor,
+	acks sarama.RequiredAcks,
+) (*AsyncProducer, chan error, error) {
 	cfg := sarama.NewConfig()
 
 	cfg.Producer.Partitioner = partitioner

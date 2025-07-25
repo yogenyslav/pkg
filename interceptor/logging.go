@@ -3,13 +3,14 @@ package interceptor
 
 import (
 	"context"
+
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/rs/zerolog/log"
 )
 
 // LoggerInterceptor generates an interceptor function for logging requests.
 func LoggerInterceptor() logging.LoggerFunc {
-	return func(ctx context.Context, level logging.Level, msg string, fields ...any) {
+	return func(_ context.Context, level logging.Level, msg string, fields ...any) {
 		l := log.With().Fields(fields).Logger()
 
 		switch level {

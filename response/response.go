@@ -8,7 +8,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog"
-	"github.com/yogenyslav/pkg/errs"
 )
 
 // ErrorResponse is a struct that holds the error message and status code.
@@ -60,21 +59,21 @@ func (h ErrorHandler) getErrorResponse(err error) ErrorResponse {
 		e  ErrorResponse
 	)
 
-	if errs.CheckPageNotFound(err) {
+	if CheckPageNotFound(err) {
 		return ErrorResponse{
 			Msg:    "page not found",
 			Status: http.StatusNotFound,
 		}
 	}
 
-	if errs.CheckDuplicateKey(err) {
+	if CheckDuplicateKey(err) {
 		return ErrorResponse{
 			Msg:    "duplicate key",
 			Status: http.StatusBadRequest,
 		}
 	}
 
-	if errs.CheckValidationError(err) {
+	if CheckValidationError(err) {
 		return ErrorResponse{
 			Msg:    err.Error(),
 			Status: http.StatusUnprocessableEntity,

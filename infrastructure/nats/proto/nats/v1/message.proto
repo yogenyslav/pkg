@@ -1,0 +1,14 @@
+syntax="proto3";
+
+package nats.v1;
+option go_package = "nats/";
+
+import "google/protobuf/timestamp.proto";
+
+// Message is a struct used for communication via nats broker/jetstream. 
+message Message {
+    google.protobuf.Timestamp ts = 1; // ts represents creation time.
+    string id = 2; // id is a uuid of the message.
+    string trace_id = 3; // trace_id is an id of a trace (randomly generated if not provided).
+    bytes payload = 4; // payload is the message content.
+}

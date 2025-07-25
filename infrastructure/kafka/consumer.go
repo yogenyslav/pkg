@@ -65,9 +65,9 @@ func (consumer *Consumer) Subscribe(ctx context.Context, topic string) (
 	errCh chan error,
 	e error,
 ) {
-	partitions, err := consumer.SingleConsumer.Partitions(topic)
-	if err != nil {
-		return nil, nil, errors.Join(ErrGetPartitions, err)
+	partitions, errPartition := consumer.SingleConsumer.Partitions(topic)
+	if errPartition != nil {
+		return nil, nil, errors.Join(ErrGetPartitions, errPartition)
 	}
 
 	initialOffset := sarama.OffsetOldest
