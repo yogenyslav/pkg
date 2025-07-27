@@ -268,7 +268,7 @@ func (n *Nats) ConsumerMessageHandler(ctx context.Context) jetstream.MessageHand
 			return
 		}
 
-		if err = n.router.processStreamMessage(ctx, natsMsg); err != nil {
+		if err = n.router.processStreamMessage(ctx, natsMsg.Subject(), &msg); err != nil {
 			l.Err(err).Msg("process message from stream")
 			return
 		}

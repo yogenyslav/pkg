@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"sync"
-
-	"github.com/nats-io/nats.go/jetstream"
 )
 
 // StreamEventHandler is a handler for incoming jetstream messages.
-type StreamEventHandler func(ctx context.Context, m jetstream.Msg) error
+type StreamEventHandler func(ctx context.Context, m *Message) error
 
 // router maps incoming messages to corresponding handlers.
 type router struct {
@@ -17,8 +15,8 @@ type router struct {
 }
 
 // processStreamMessage processes message with handler found by subject.
-func (r *router) processStreamMessage(ctx context.Context, m jetstream.Msg) error {
-	h, ok := r.streamHandlers.Load(m.Subject())
+func (r *router) processStreamMessage(ctx context.Context, subj string, m *Message) error {
+	h, ok := r.streamHandlers.Load(subj)
 	if !ok {
 		return nil
 	}
