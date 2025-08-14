@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,18 +17,19 @@ var ErrAckTimeout = errors.New("waiting for ack exceeded timeout")
 
 // Nats holds a connection to nats broker/cluster and jetstream.
 type Nats struct {
-	conn      *nats.Conn
-	stream    jetstream.JetStream
-	consumers []jetstream.Consumer
-	router    *router
-	tracer    trace.Tracer
+	conn        *nats.Conn
+	stream      jetstream.JetStream
+	consumers   []jetstream.Consumer
+	router      *router
+	logsEnabled bool
+	tracer      trace.Tracer
 }
 
 // New is a constructor for [Nats].
 func New(cfg Config, opts ...NatsOpt) (*Nats, error) {
 	conn, err := nats.Connect(cfg.URL())
 	if err != nil {
-		return nil, fmt.Errorf("connect to nats: %v", err)
+		return nil, fmt.Errorf("connect to nats: %w", err)
 	}
 
 	n := &Nats{
@@ -54,4 +56,17 @@ func (n *Nats) trace(ctx context.Context, spanName string, attrs ...attribute.Ke
 
 	ctx, span := n.tracer.Start(ctx, spanName, trace.WithAttributes(attrs...))
 	return ctx, span
+}
+
+func getMessageID(ctx context.Context, headers map[string]string) string {
+	if headers["messageID"] != "" {
+		return headers["messageID"]
+	}
+
+	messageID, ok := ctx.Value(MessageIDKey).(string)
+	if !ok || messageID == "" {
+		return uuid.NewString()
+	}
+
+	return messageID
 }

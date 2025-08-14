@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/rs/zerolog/log"
@@ -16,6 +15,13 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// contextKey is a type for context keys used in NATS operations.
+type contextKey struct {
+	Key string
+}
+
+var MessageIDKey = contextKey{"messageID"}
 
 // ErrJetStreamNotEnabled is an error when JetStream methods were used before it was initialized.
 var ErrJetStreamNotEnabled = errors.New(
@@ -30,7 +36,7 @@ func (n *Nats) JetStream() (jetstream.JetStream, error) {
 
 	stream, err := jetstream.New(n.conn)
 	if err != nil {
-		return nil, fmt.Errorf("connect to jetstream: %v", err)
+		return nil, fmt.Errorf("connect to jetstream: %w", err)
 	}
 
 	n.stream = stream
@@ -45,17 +51,24 @@ func (n *Nats) PublishSync(ctx context.Context, subj, reply string, payload []by
 		return ErrJetStreamNotEnabled
 	}
 
-	ctx, span := n.trace(ctx, "JetStream publish", attribute.String("subj", subj))
+	messageID := getMessageID(ctx, headers)
+
+	ctx, span := n.trace(
+		ctx,
+		"JetStream sync publish",
+		attribute.String("messageID", messageID),
+		attribute.String("subj", subj),
+	)
 	defer span.End()
 
 	data, err := proto.Marshal(&Message{
 		Ts:      timestamppb.Now(),
-		Id:      uuid.NewString(),
+		Id:      messageID,
 		TraceId: span.SpanContext().TraceID().String(),
 		Payload: payload,
 	})
 	if err != nil {
-		return fmt.Errorf("marshal proto message: %v", err)
+		return fmt.Errorf("marshal proto message: %w", err)
 	}
 
 	natsMsg := nats.NewMsg(subj)
@@ -73,7 +86,7 @@ func (n *Nats) PublishSync(ctx context.Context, subj, reply string, payload []by
 		span.AddEvent(desc)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, desc)
-		return fmt.Errorf("%s: %v", desc, err)
+		return fmt.Errorf("%s: %w", desc, err)
 	}
 
 	span.AddEvent(
@@ -95,17 +108,24 @@ func (n *Nats) PublishAsync(
 		return ErrJetStreamNotEnabled
 	}
 
-	_, span := n.trace(ctx, "JetStream async publish", attribute.String("subj", subj))
+	messageID := getMessageID(ctx, headers)
+
+	ctx, span := n.trace(
+		ctx,
+		"JetStream async publish",
+		attribute.String("messageID", messageID),
+		attribute.String("subj", subj),
+	)
 	defer span.End()
 
 	data, err := proto.Marshal(&Message{
 		Ts:      timestamppb.Now(),
-		Id:      uuid.NewString(),
+		Id:      messageID,
 		TraceId: span.SpanContext().TraceID().String(),
 		Payload: payload,
 	})
 	if err != nil {
-		return fmt.Errorf("marshal proto message: %v", err)
+		return fmt.Errorf("marshal proto message: %w", err)
 	}
 
 	natsMsg := nats.NewMsg(subj)
@@ -123,7 +143,7 @@ func (n *Nats) PublishAsync(
 		span.AddEvent(desc)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, desc)
-		return fmt.Errorf("%s: %v", desc, err)
+		return fmt.Errorf("%s: %w", desc, err)
 	}
 
 	if withAck {
@@ -168,7 +188,7 @@ func (n *Nats) Stream(ctx context.Context, cfg StreamConfig) (jetstream.Stream, 
 	}
 
 	if err := streamList.Err(); err != nil {
-		return nil, fmt.Errorf("list existing streams: %v", err)
+		return nil, fmt.Errorf("list existing streams: %w", err)
 	}
 
 	stream, err := n.stream.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
@@ -180,7 +200,7 @@ func (n *Nats) Stream(ctx context.Context, cfg StreamConfig) (jetstream.Stream, 
 		Compression: cfg.Compression,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create new stream: %v", err)
+		return nil, fmt.Errorf("create new stream: %w", err)
 	}
 
 	return stream, nil
@@ -198,7 +218,7 @@ func (n *Nats) Consumer(ctx context.Context, cfg ConsumerConfig) (jetstream.Cons
 		AckPolicy:      cfg.AckPolicy,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create jetstream consumer: %v", err)
+		return nil, fmt.Errorf("create jetstream consumer: %w", err)
 	}
 
 	return cons, nil
@@ -237,7 +257,7 @@ func (n *Nats) ProcessStream(
 
 	msgs, err := cons.Consume(handler, jetstream.ConsumeErrHandler(errHandler))
 	if err != nil {
-		return nil, fmt.Errorf("start consuming messages from stream: %v", err)
+		return nil, fmt.Errorf("start consuming messages from stream: %w", err)
 	}
 
 	return msgs, err
@@ -249,41 +269,56 @@ func (n *Nats) ConsumerMessageHandler(ctx context.Context) jetstream.MessageHand
 		ctx, span := n.trace(ctx, "JetStream consume message")
 		defer span.End()
 
-		ctx = loggerCtx(ctx)
-		l := log.Ctx(ctx)
+		if n.logsEnabled {
+			ctx = loggerCtx(ctx)
+		}
 
 		subj := natsMsg.Subject()
-		l.Debug().Str("subj", subj).Msg("got message")
 
 		err := natsMsg.DoubleAck(ctx)
 		if err != nil {
-			l.Err(err).Msg("double ack the message")
+			if n.logsEnabled {
+				log.Ctx(ctx).Err(err).Msg("double ack the message")
+			}
 			return
 		}
-		l.Debug().Str("subj", natsMsg.Subject()).Msg("ack")
 
 		var msg Message
 		if err = proto.Unmarshal(natsMsg.Data(), &msg); err != nil {
-			l.Err(err).Msg("unmarshal message")
+			if n.logsEnabled {
+				log.Ctx(ctx).Err(err).Msg("unmarshal message")
+			}
 			return
 		}
 
-		if err = n.router.processStreamMessage(ctx, natsMsg.Subject(), &msg); err != nil {
-			l.Err(err).Msg("process message from stream")
+		span.SetAttributes(
+			attribute.String("messageID", msg.Id),
+			attribute.String("subj", subj),
+		)
+
+		if err = n.router.processStreamMessage(ctx, subj, &msg); err != nil {
+			if n.logsEnabled {
+				log.Ctx(ctx).Err(err).Msg("process message from stream")
+			}
 			return
 		}
 
-		l.Info().Str("subj", natsMsg.Subject()).Msg("message processed successfuly")
+		if n.logsEnabled {
+			log.Ctx(ctx).Info().Str("message_id", msg.Id).Str("subj", subj).Msg("message processed successfuly")
+		}
 	}
 }
 
 // ConsumerErrHandler returns default error handler for stream consumer.
 func (n *Nats) ConsumerErrHandler(ctx context.Context) jetstream.ConsumeErrHandlerFunc {
-	return func(consumeCtx jetstream.ConsumeContext, err error) {
+	return func(_ jetstream.ConsumeContext, err error) {
 		_, span := n.trace(ctx, "JetStream consume error")
 		defer span.End()
 
-		log.Err(err).Msg("consume jetstream message")
+		if n.logsEnabled {
+			ctx = loggerCtx(ctx)
+			log.Ctx(ctx).Err(err).Msg("consume jetstream message")
+		}
 
 		desc := "consume error"
 		span.AddEvent(desc)
@@ -292,11 +327,11 @@ func (n *Nats) ConsumerErrHandler(ctx context.Context) jetstream.ConsumeErrHandl
 	}
 }
 
-// Handle registers new [StreamEventHandler] to handle messages with specified subject.
-func (n *Nats) Handle(subj string, h StreamEventHandler) {
+// Handle registers new [EventHandler] to handle messages with specified subject.
+func (n *Nats) Handle(subj string, h EventHandler) {
 	if n.stream == nil {
 		panic(ErrJetStreamNotEnabled)
 	}
 
-	n.router.streamHandlers.Store(subj, h)
+	n.router.handlers.Store(subj, h)
 }

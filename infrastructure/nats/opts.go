@@ -1,6 +1,8 @@
 package nats
 
-import "go.opentelemetry.io/otel/trace"
+import (
+	"go.opentelemetry.io/otel/trace"
+)
 
 // NatsOpt is an alias for nats options.
 type NatsOpt func(*Nats)
@@ -16,5 +18,11 @@ func WithTracer(tracer trace.Tracer) NatsOpt {
 func WithJetStream() NatsOpt {
 	return func(n *Nats) {
 		n.JetStream()
+	}
+}
+
+func WithLogs(enabled bool) NatsOpt {
+	return func(n *Nats) {
+		n.logsEnabled = enabled
 	}
 }
