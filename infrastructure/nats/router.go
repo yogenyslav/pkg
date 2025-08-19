@@ -6,8 +6,8 @@ import (
 	"sync"
 )
 
-// EventHandler is a handler for incoming messages.
-type EventHandler func(ctx context.Context, m *Message) error
+// StreamEventHandler is a handler for incoming messages from stream.
+type StreamEventHandler func(ctx context.Context, m *Message) error
 
 // router maps incoming messages to corresponding handlers.
 type router struct {
@@ -21,7 +21,7 @@ func (r *router) processStreamMessage(ctx context.Context, subj string, m *Messa
 		return nil
 	}
 
-	handler, ok := h.(EventHandler)
+	handler, ok := h.(StreamEventHandler)
 	if !ok {
 		panic("not an event handler")
 	}

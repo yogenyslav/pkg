@@ -13,6 +13,9 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// EventHandler is a handler for general incoming messages.
+type EventHandler func(ctx context.Context, msg *Message) ([]byte, error)
+
 // Conn returns underlying connection to nats.
 func (n *Nats) Conn() *nats.Conn {
 	return n.conn
@@ -113,7 +116,7 @@ func (n *Nats) Request(
 // Subscribe subscribes to a subject and sends messages to the handler.
 func (n *Nats) Subscribe(
 	subj string,
-	handler func(ctx context.Context, msg *Message) ([]byte, error),
+	handler EventHandler,
 ) (*nats.Subscription, error) {
 	sub, err := n.conn.Subscribe(subj, func(m *nats.Msg) {
 		ctx, span := n.trace(context.Background(), "NATS pub/sub response", attribute.String("subj", subj))
