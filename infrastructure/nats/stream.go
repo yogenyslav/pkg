@@ -327,8 +327,8 @@ func (n *Nats) ConsumerErrHandler(ctx context.Context) jetstream.ConsumeErrHandl
 	}
 }
 
-// Handle registers new [EventHandler] to handle messages with specified subject.
-func (n *Nats) Handle(subj string, h EventHandler) {
+// Handle registers new [StreamEventHandler] to handle messages with specified subject.
+func (n *Nats) Handle(subj string, h StreamEventHandler) {
 	if n.stream == nil {
 		panic(ErrJetStreamNotEnabled)
 	}
